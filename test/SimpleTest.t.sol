@@ -6,7 +6,6 @@ import "forge-std/Test.sol";
 import "forge-std/console.sol";
 
 contract SimpleTest is Test {
-    uint public test;
     ERC20Huff public erc20huff;
 
     function setUp() public {
@@ -21,7 +20,7 @@ contract SimpleTest is Test {
 
     function testMint() public {
         erc20huff.mint(address(this), 2);
-        console.log(erc20huff.getBalance(address(this)));
+        console.log("balance:", erc20huff.getBalance(address(this)));
     }
 
 
