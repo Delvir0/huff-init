@@ -1,0 +1,149 @@
+#define function storeValue(address, uint32) nonpayable returns()
+#define function getValue(uint256) view returns(bytes32)
+#define function mint(address, uint256) nonpayable returns()
+#define function getBalance(address) view returns(uint256)
+
+#define constant MAPPING_STORE_LOCATION = FREE_STORAGE_POINTER() // = slot of mapping!
+
+#define macro STORE_VALUE() = takes (0) returns (0) {
+    // 0x0000000000000000000000007fa9385be102ac3eac297483dd6233d62b3e1496 (0x04 calldataload)
+    // 0x000000000000000000000000000000000000000000000000000000000000038f (0x24 calldataload)
+    0x04 calldataload // get the input value. Offset of 4 skips func sig
+    0x00 // [0, calldata]
+    sstore
+
+    0x24 calldataload // get the input value. Offset of 24 skips func sig and next 32bytes (which includes the address)
+    0x01 // [1, calldata]
+    sstore
+}
+
+#define macro GET_VALUE() = takes (0) returns (0) {
+    0x04 calldataload
+    sload
+
+    0x00
+    mstore
+
+    0x20 0x00 return
+}
+
+
+#define macro MAIN() = takes (0) returns (0) {
+
+    // get functions sig and the value
+    0x00 calldataload // get calldataload starting from 0x00 [calldata (32 bytes)]
+    0xE0 // = 244. 256 - 244 = 12 bits = 4 bytes [244, calldata]
+    shr // shift 244 bits to the right [sig]
+
+    dup1 // [calldata sig, calldata sig]
+    // example of calldata:
+    //  fn sig    arg1
+    // 0x55241077 0000000000000000000000000000000000000000000000000000000123456789
+    // 1st 32 bytes:
+    // 0x5524107700000000000000000000000000000000000000000000000000000001
+    // after shr 224:
+    // 0x0000000000000000000000000000000000000000000000000000000055241077 => 0x55241077
+
+    __FUNC_SIG(storeValue) // [storeValue sig, calldata sig, calldata sig]
+    eq // [storeValue sig == calldata sig?]
+        // [1 or 0]
+    store // jump label used for store function [store, 1/0, calldata sig]
+    jumpi // will jump to store label if value == 1
+
+    // [calldata sig]
+
+    dup1 //[calldata sig, calldata sig]
+
+    __FUNC_SIG(getValue) // [func sig, calldata sig, calldata sig]
+    eq // [1 or 0]
+    get
+    jumpi
+
+    dup1
+    __FUNC_SIG(mint) // [func sig, calldata sig]
+    eq // [1 or 0]
+    mint
+    jumpi
+
+    __FUNC_SIG(getBalance) // [func sig, calldata sig]
+    eq // [1 or 0]
+    getB
+    jumpi
+
+    0x00 0x00 revert
+
+    store:
+        STORE_VALUE()
+    get:
+        GET_VALUE()
+    mint:
+        STORE_MINT_MAPPING()
+    getB:
+        GET_BALANCE()
+}
+
+
+
+
+#define macro STORE_MINT_MAPPING() = takes(0) returns (0) {
+
+    0x24 calldataload // [input mint amount]
+
+    // store slot number in memory
+    [MAPPING_STORE_LOCATION] // [0, input]
+    0x20 mstore // [32, 0, inputV] -> [inputV] = store slot 0 at memory location 32 (32 = offset)
+    // memory starting from 0x20: 0x0000...0
+
+    // store key in memory. !should be uint(address) but using 5 for now!
+    0x04 calldataload 0x00 mstore // [0, addr, inputV] -> [inputV]
+    // memory starting from 0x00: 0x0000...addr
+
+    // memory layout:
+    // 0000000000000000000000007fa9385be102ac3eac297483dd6233d62b3e1496 (0x20 size)
+    // 0000000000000000000000000000000000000000000000000000000000000000 (0x20 size)
+
+    0x40 // total size of memory [64, inputV]
+    0x00 // mem_ptr [0, 64, inputV]
+    sha3 // keccak(0 till 64) -> [slot number of mapping key, inputV]
+
+    // store value in mapping-key slot
+
+    // [slot number of mapping key, inputV]
+    sstore // []
+
+}
+
+#define macro GET_BALANCE() = takes(0) returns(0) {
+    // we need:
+    // slot number of mapping
+    // key of mapping
+    // sha3 for slot number
+
+    // sha3 needs: key in first 32 bit of memory (0) then slot number of mapping in 0 + 32 position in memory (32)
+
+    0x04 calldataload // [addr]
+    0x00 // [0, addr]
+    mstore // []
+
+    [MAPPING_STORE_LOCATION] // [0]
+    0x20 // [32 ,0]
+    mstore // []
+
+    // memory layout:
+    // 000000000000000000000000000000000000000000000000000000000000addr (0x20 size)
+    // 0000000000000000000000000000000000000000000000000000000000000000 (0x20 size)
+
+    0x40 // [64]
+    0x00 // [0 ,64]
+    sha3 // hash from memory 0 till 64 -> [slot]
+
+    sload // [minted value]
+
+    0x00 // [0, mintedV]
+    mstore // []
+
+    0x20 0x00 return
+
+}
+
+
